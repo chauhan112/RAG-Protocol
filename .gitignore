@@ -5,6 +5,7 @@ __pycache__/
 
 # C extensions
 *.so
+.vector_storage
 
 # Distribution / packaging
 .Python
@@ -172,3 +173,5 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+
+

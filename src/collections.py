@@ -2,6 +2,7 @@ from typing import List, Dict, Optional
 import shutil
 from pathlib import Path
 from .vectorStores import LocalVectorStore
+from .tools import SerializationDB
 
 class VectorStoreWithCollections(LocalVectorStore):
     def __init__(self, base_storage_path: str, *args, **kwargs):
@@ -9,6 +10,8 @@ class VectorStoreWithCollections(LocalVectorStore):
         self.base_storage_path = Path(base_storage_path)
         self.collections: Dict[str, Dict] = {}  
         self.base_storage_path.mkdir(exist_ok=True)
+        if (self.base_storage_path / "collections.pkl").exists():
+            self.collections = SerializationDB.readPickle(self.base_storage_path / "collections.pkl")
     
     def create_collection(self, collection_name: str):
         collection_path = self.base_storage_path / collection_name
@@ -18,6 +21,7 @@ class VectorStoreWithCollections(LocalVectorStore):
             "pdfs": {},
             "vector_store": None
         }
+        SerializationDB.pickleOut(self.collections, self.base_storage_path / "collections.pkl")
         return collection_name
     
     def load_collection(self, collection_name: str):
@@ -48,4 +52,4 @@ class VectorStoreWithCollections(LocalVectorStore):
         
         # Save updated vector store
         self.save(str(self.collections[collection_name]["path"] / "vector_store"))
-
+        SerializationDB.pickleOut(self.collections, collection_path / "embeddings.pkl")

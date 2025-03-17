@@ -4,6 +4,8 @@ from pydantic import BaseModel
 import os
 import shutil
 from .collections import VectorStoreWithCollections
+from fastapi.middleware.cors import CORSMiddleware
+
 
 class CollectionCreate(BaseModel):
     name: str
@@ -12,9 +14,20 @@ class PDFCreate(BaseModel):
     collection_name: str
     pdf_name: str
 
+class CollectionUpdate(BaseModel):
+    oldName: str
+    newName: str
+
 
 app = FastAPI()
-vector_store = VectorStoreWithCollections(base_storage_path="./vector_storage")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+vector_store = VectorStoreWithCollections(base_storage_path="./.vector_storage")
 
 # Collection CRUD Operations
 @app.post("/collections/", response_model=dict)
@@ -27,7 +40,6 @@ async def create_collection(collection: CollectionCreate):
 
 @app.get("/collections/", response_model=List[str])
 async def list_collections():
-    print("liszinh")
     return list(vector_store.collections.keys())
 
 @app.get("/collections/{collection_name}", response_model=dict)
@@ -48,6 +60,22 @@ async def delete_collection(collection_name: str):
     shutil.rmtree(vector_store.collections[collection_name]["path"])
     del vector_store.collections[collection_name]
     return {"status": "deleted"}
+
+@app.post("/collections/update", response_model=dict)
+async def update_collection_name(collection: CollectionUpdate):
+    if collection.oldName not in vector_store.collections:
+        raise HTTPException(status_code=404, detail="Collection not found")
+    
+    # Delete collection directory and its contents
+    collection_name = collection.newName
+    newPath = vector_store.base_storage_path / collection_name
+    infos = vector_store.collections[collection_name].copy()
+    # rename directory to new name
+    shutil.move(vector_store.collections[collection.oldName]["path"], newPath )
+    vector_store.collections[collection_name] = infos
+    vector_store.collections[collection_name]["path"] = newPath
+    del vector_store.collections[collection.oldName]
+    return {"status": "updated"}
 
 # PDF CRUD Operations
 @app.post("/collections/{collection_name}/pdfs/", response_model=dict)
