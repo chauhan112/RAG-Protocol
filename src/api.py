@@ -3,7 +3,7 @@ from typing import List, Dict, Optional
 from pydantic import BaseModel
 import os
 import shutil
-from .collections import VectorStoreWithCollections
+from .VectorCollections import VectorCollections
 from fastapi.middleware.cors import CORSMiddleware
 
 
@@ -27,7 +27,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-vector_store = VectorStoreWithCollections(base_storage_path="./.vector_storage")
+vector_store = VectorCollections(base_storage_path="./.vector_storage")
 
 # Collection CRUD Operations
 @app.post("/collections/", response_model=dict)
@@ -40,16 +40,15 @@ async def create_collection(collection: CollectionCreate):
 
 @app.get("/collections/", response_model=List[str])
 async def list_collections():
-    
-    return list(vector_store.collections.keys())
+    return vector_store.read_collections()
 
 @app.get("/collections/{collection_name}", response_model=dict)
-async def get_collection(collection_name: str):
+async def read_pdfs(collection_name: str):
     if collection_name not in vector_store.collections:
         raise HTTPException(status_code=404, detail="Collection not found")
     return {
         "name": collection_name,
-        "pdfs": list(vector_store.collections[collection_name]["pdfs"].keys())
+        "pdfs": vector_store.read_pdfs(collection_name)
     }
 
 @app.delete("/collections/{collection_name}", response_model=dict)
@@ -57,15 +56,17 @@ async def delete_collection(collection_name: str):
     if collection_name not in vector_store.collections:
         raise HTTPException(status_code=404, detail="Collection not found")
 
-    shutil.rmtree(vector_store.collections[collection_name]["path"])
-    del vector_store.collections[collection_name]
+    vector_store.delete_collection(collection_name)
     return {"status": "deleted"}
 
 @app.post("/collections/update/", response_model=dict)
 async def update_collection_name(collection: CollectionUpdate):
     if collection.oldName not in vector_store.collections:
         raise HTTPException(status_code=404, detail="Collection not found")
-    vector_store.update_collection_name(collection.oldName, collection.newName)
+    try:
+        vector_store.update_collection_name(collection.oldName, collection.newName)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
     return {"status": "updated"}
 
 # PDF CRUD Operations
@@ -84,6 +85,8 @@ async def upload_pdf(collection_name: str, pdf_name: str, file: UploadFile = Fil
     try:
         vector_store.add_pdf(collection_name, temp_path, pdf_name)
         return {"pdf_name": pdf_name, "collection_name": collection_name, "status": "uploaded"}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
     finally:
         os.remove(temp_path)
 
@@ -91,7 +94,7 @@ async def upload_pdf(collection_name: str, pdf_name: str, file: UploadFile = Fil
 async def list_pdfs(collection_name: str):
     if collection_name not in vector_store.collections:
         raise HTTPException(status_code=404, detail="Collection not found")
-    return list(vector_store.collections[collection_name]["pdfs"].keys())
+    return vector_store.read_pdfs(collection_name)
 
 @app.delete("/collections/{collection_name}/pdfs/{pdf_name}", response_model=dict)
 async def delete_pdf(collection_name: str, pdf_name: str):
@@ -100,16 +103,6 @@ async def delete_pdf(collection_name: str, pdf_name: str):
     if pdf_name not in vector_store.collections[collection_name]["pdfs"]:
         raise HTTPException(status_code=404, detail="PDF not found")
 
-    pdf_path = vector_store.collections[collection_name]["pdfs"][pdf_name]
-    os.remove(pdf_path)
-
-    remaining_pdfs = vector_store.collections[collection_name]["pdfs"]
-    del remaining_pdfs[pdf_name]
-    
-    vector_store._db = None
-    for pdf_path in remaining_pdfs.values():
-        vector_store.add_pdf(pdf_path)
-    vector_store.save(str(vector_store.collections[collection_name]["path"] / "vector_store"))
-    
+    vector_store.remove_pdf(collection_name, pdf_name)
     return {"status": "deleted"}
 
