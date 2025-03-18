@@ -19,7 +19,7 @@ class LocalVectorStore:
         if self._db is None:
             self.documents.extend(docs)
         else:
-            splits = self.text_splitter.split_documents(docs)
+            new_splits = self.text_splitter.split_documents(docs)
             self._db.add_documents(new_splits)
     def add_pdf(self, pdf_path: str):
         self._add_and_store(PyPDFLoader(pdf_path).load())
